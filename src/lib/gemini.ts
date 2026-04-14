@@ -119,7 +119,8 @@ export async function generateSummary(prompt: string) {
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.2, // Low temperature for factual, objective summaries
+        temperature: 0.2,
+        tools: [{ googleSearch: {} }],
       }
     });
     return response.text;

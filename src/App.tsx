@@ -127,7 +127,7 @@ export default function App() {
     setError(null);
     try {
       const today = new Date().toLocaleDateString('pt-BR');
-      const markdown = await generateSummary(`Gerar resumo diário de notícias dos concorrentes da Elleven para ${today}. Por favor, invente 4-5 notícias realistas para o dia de hoje para fins de demonstração.`);
+      const markdown = await generateSummary(`Buscar e resumir as notícias e publicações mais recentes dos concorrentes da Elleven para ${today}. Use a busca para encontrar atualizações reais nos websites e Instagram das marcas monitoradas: Isapa (isapa.com.br, @isapabike), Clube B2B (clubeb2b.com.br, @b2bclube), Absolute (absolutebikes.com.br, @absolutebike), GTA (gtabikes.com.br, @gtabike), TSW (tswbicycle.com.br, @tswbike), Sense (sensebikes.com.br, @sensebike), LM Bikes (lmbikes.com.br, @lmbikeoficial), Wip Bikes (wipbikes.com.br, @wipbikes). Traga apenas informações reais encontradas, com datas corretas.`);
       const parsedNews = parseNewsMarkdown(markdown);
       if (parsedNews.length > 0) {
         setNews(parsedNews);
@@ -206,4 +206,3 @@ export default function App() {
     </div>
   );
 }
-
