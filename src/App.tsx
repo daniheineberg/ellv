@@ -127,7 +127,20 @@ export default function App() {
     setError(null);
     try {
       const today = new Date().toLocaleDateString('pt-BR');
-      const markdown = await generateSummary(`Buscar e resumir as notícias e publicações mais recentes (últimos 30 dias) dos concorrentes da Elleven. Data de referência: ${today}. Use a busca para encontrar atualizações reais nos websites e Instagram das marcas monitoradas: Isapa (isapa.com.br, @isapabike), Clube B2B (clubeb2b.com.br, @b2bclube), Absolute (absolutebikes.com.br, @absolutebike), GTA (gtabikes.com.br, @gtabike), TSW (tswbicycle.com.br, @tswbike), Sense (sensebikes.com.br, @sensebike), LM Bikes (lmbikes.com.br, @lmbikeoficial), Wip Bikes (wipbikes.com.br, @wipbikes). Traga as notícias mais recentes encontradas com datas reais.`);
+      const markdown = await generateSummary(`Pesquise agora nos websites dos concorrentes da Elleven e traga as publicações mais recentes encontradas. Data de hoje: ${today}.
+
+Para cada marca abaixo, faça uma busca específica no site e traga o conteúdo mais recente (lançamentos, promoções, novos produtos, notícias):
+
+1. Busque em site:absolutebikes.com.br - novidades, lançamentos, produtos
+2. Busque em site:isapa.com.br - novidades, lançamentos, produtos
+3. Busque em site:gtabikes.com.br - novidades, lançamentos, produtos
+4. Busque em site:tswbicycle.com.br - novidades, lançamentos, produtos
+5. Busque em site:sensebikes.com.br - novidades, lançamentos, produtos
+6. Busque em site:lmbikes.com.br - novidades, lançamentos, produtos
+7. Busque em site:wipbikes.com.br - novidades, lançamentos, produtos
+8. Busque em site:clubeb2b.com.br - novidades, lançamentos, produtos
+
+Use os resultados reais encontrados para gerar o resumo. Traga o que encontrar mesmo que seja de semanas atrás - o importante é que seja real e recente.`);
       console.log('=== RESPOSTA GEMINI ===', markdown);
       const parsedNews = parseNewsMarkdown(markdown);
       if (parsedNews.length > 0) {
