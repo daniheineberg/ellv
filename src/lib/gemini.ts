@@ -123,7 +123,7 @@ export async function generateSummary(prompt: string) {
         tools: [{ googleSearch: {} }],
       }
     });
-    return response.text;
+    return response.text ?? '';
   } catch (error) {
     console.error("Error generating summary:", error);
     throw error;
