@@ -7,7 +7,6 @@ import { Home, User, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { NewsFeed } from './components/NewsFeed';
 import { DeepDive } from './components/DeepDive';
-import { generateSummary } from './lib/gemini';
 
 export interface NewsItem {
   id: string;
@@ -39,12 +38,12 @@ function parseNewsMarkdown(markdown: string): NewsItem[] {
     const sourceLine = lines.find(l => l.startsWith('**Fonte:**') || l.startsWith('Fonte:'));
     if (sourceLine) {
       const sourceRaw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
-      const parts = sourceRaw.split('•').map(p => p.trim());
+      const parts = sourceRaw.split('\u2022').map(p => p.trim());
       
       const datePartIndex = parts.findIndex(p => p.includes('/'));
       if (datePartIndex !== -1) {
         date = parts[datePartIndex];
-        source = parts.filter((_, i) => i !== datePartIndex).join(' • ');
+        source = parts.filter((_, i) => i !== datePartIndex).join(' \u2022 ');
       } else {
         source = parts[0] || '';
         date = parts[1] || '';
@@ -59,10 +58,8 @@ function parseNewsMarkdown(markdown: string): NewsItem[] {
     const linkLine = lines.find(l => l.startsWith('**Link:**') || l.startsWith('Link:'));
     if (linkLine) {
       let parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
-      // Remove markdown brackets like [text](url) or just [url]
       const mdUrl = parsedUrl.match(/\[.*?\]\((.*?)\)/);
       if (mdUrl) parsedUrl = mdUrl[1];
-      // Add https:// if missing
       if (parsedUrl && !parsedUrl.startsWith('http') && parsedUrl.includes('.')) {
         parsedUrl = 'https://' + parsedUrl;
       }
@@ -91,11 +88,11 @@ function parseNewsMarkdown(markdown: string): NewsItem[] {
       tagsRaw.forEach(t => {
         let type: 'positive' | 'negative' | 'neutral' = 'neutral';
         const lowerT = t.toLowerCase();
-        if (lowerT.includes('positivo') || lowerT.includes('🟢')) type = 'positive';
-        else if (lowerT.includes('negativo') || lowerT.includes('🔴')) type = 'negative';
-        else if (lowerT.includes('neutro') || lowerT.includes('🟡')) type = 'neutral';
+        if (lowerT.includes('positivo') || lowerT.includes('\ud83d\udfe2')) type = 'positive';
+        else if (lowerT.includes('negativo') || lowerT.includes('\ud83d\udd34')) type = 'negative';
+        else if (lowerT.includes('neutro') || lowerT.includes('\ud83d\udfe1')) type = 'neutral';
         
-        const label = t.replace(/[🟢🔴🟡*]/g, '').trim();
+        const label = t.replace(/[\ud83d\udfe2\ud83d\udd34\ud83d\udfe1*]/g, '').trim();
         if (label) {
           tags.push({ label, type });
         }
@@ -133,35 +130,16 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const today = new Date().toLocaleDateString('pt-BR');
-      const markdown = await generateSummary(`Pesquise agora nos websites dos concorrentes da Elleven e traga as publicações mais recentes encontradas. Data de hoje: ${today}.
-
-Para cada marca abaixo, faça uma busca específica no site e traga o conteúdo mais recente (lançamentos, promoções, novos produtos, notícias):
-
-1. Busque em site:absolutebikes.com.br - novidades, lançamentos, produtos
-2. Busque em site:isapa.com.br - novidades, lançamentos, produtos
-3. Busque em site:gtabikes.com.br - novidades, lançamentos, produtos
-4. Busque em site:tswbicycle.com.br - novidades, lançamentos, produtos
-5. Busque em site:sensebikes.com.br - novidades, lançamentos, produtos
-6. Busque em site:lmbikes.com.br - novidades, lançamentos, produtos
-7. Busque em site:wipbikes.com.br - novidades, lançamentos, produtos
-8. Busque em site:clubeb2b.com.br - novidades, lançamentos, produtos
-
-Use os resultados reais encontrados para gerar o resumo. Traga o que encontrar mesmo que seja de semanas atrás - o importante é que seja real e recente.`);
-      console.log('=== RESPOSTA GEMINI ===', markdown);
+      const response = await fetch('/api/news');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const markdown = data.markdown || '';
+      console.log('=== RESPOSTA BACKEND ===', markdown);
       const parsedNews = parseNewsMarkdown(markdown);
-      if (parsedNews.length > 0) {
-        setNews(parsedNews);
-      } else {
-        setNews([]);
-      }
+      setNews(parsedNews.length > 0 ? parsedNews : []);
     } catch (err: any) {
       console.error("Failed to fetch news", err);
-      if (err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('RESOURCE_EXHAUSTED')) {
-        setError('Limite de requisições da API atingido. Tente novamente mais tarde.');
-      } else {
-        setError('Erro ao buscar notícias. Tente novamente mais tarde.');
-      }
+      setError('Erro ao buscar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
       setNews([]);
     } finally {
       setIsLoading(false);
