@@ -58,7 +58,14 @@ function parseNewsMarkdown(markdown: string): NewsItem[] {
     let url = '';
     const linkLine = lines.find(l => l.startsWith('**Link:**') || l.startsWith('Link:'));
     if (linkLine) {
-      const parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
+      let parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
+      // Remove markdown brackets like [text](url) or just [url]
+      const mdUrl = parsedUrl.match(/\[.*?\]\((.*?)\)/);
+      if (mdUrl) parsedUrl = mdUrl[1];
+      // Add https:// if missing
+      if (parsedUrl && !parsedUrl.startsWith('http') && parsedUrl.includes('.')) {
+        parsedUrl = 'https://' + parsedUrl;
+      }
       if (parsedUrl.startsWith('http')) {
         url = parsedUrl;
       }
