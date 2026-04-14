@@ -115,7 +115,7 @@ Post no Instagram da Sense promove a nova linha de bicicletas urbanas com a camp
 export async function generateSummary(prompt: string) {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
@@ -132,7 +132,7 @@ export async function generateSummary(prompt: string) {
 
 export function createChatSession() {
   return ai.chats.create({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     config: {
       systemInstruction: systemInstruction,
       temperature: 0.2,
