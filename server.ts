@@ -49,6 +49,7 @@ SEGMENTOS: MTB | URBANO | GRAVEL | INFANTIL | SPEED | E-BIKE | PEÇAS
 REGRAS IMPORTANTES:
 - Use APENAS informações presentes no conteúdo fornecido - nunca invente
 - Para datas: use SOMENTE datas encontradas no conteúdo HTML (meta tags, JSON-LD, texto). NUNCA use a data de hoje como data de publicação
+- Para o campo **Link:**, use SEMPRE a URL exata indicada em [PAGINA_URL: ...] da seção onde encontrou a informação
 - Se não encontrar nada relevante em um site, simplesmente não inclua aquele site
 - Foque em: novos produtos, preços, promoções, lançamentos, campanhas`;
 
@@ -123,12 +124,12 @@ async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: 
   const urls = [c.baseUrl, ...c.extraPaths.map(p => c.baseUrl + p)];
   const results = await Promise.all(urls.map(url => fetchPage(url)));
 
-  const labels = ['homepage', ...c.extraPaths];
   const sections: string[] = [];
 
   results.forEach((result, i) => {
     if (result) {
-      sections.push(`[${labels[i]}]\n${result.text}${result.dates}`);
+      const fullUrl = i === 0 ? c.baseUrl : c.baseUrl + c.extraPaths[i - 1];
+      sections.push(`[PAGINA_URL: ${fullUrl}]\n${result.text}${result.dates}`);
     }
   });
 
