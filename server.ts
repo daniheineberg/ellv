@@ -1,5 +1,6 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,6 +9,10 @@ const app = express();
 app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
 const COMPETITORS = [
   { name: 'Absolute', baseUrl: 'https://absolutebikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
@@ -34,7 +39,7 @@ Para cada informação relevante encontrada (produto novo, promoção, preço, l
 
 ### [Título objetivo]
 **Fonte:** [Nome do site] • [Data REAL encontrada no conteúdo - use formato DD/MM/AAAA. Se não encontrar data real, deixe em branco]
-**Link:** [URL da página onde foi encontrado]
+**Link:** [URL exata indicada em PAGINA_URL da seção onde encontrou a informação]
 **Concorrente:** [Nome da marca]
 
 [2-3 frases: O QUE foi encontrado, IMPACTO potencial para Elleven, CONTEXTO relevante]
@@ -46,44 +51,28 @@ Para cada informação relevante encontrada (produto novo, promoção, preço, l
 CATEGORIAS: PRODUTO | PREÇO | MARKETING | DISTRIBUIÇÃO | PARCERIA | OPERAÇÕES | TECH | PERFORMANCE
 SEGMENTOS: MTB | URBANO | GRAVEL | INFANTIL | SPEED | E-BIKE | PEÇAS
 
-REGRAS IMPORTANTES:
+REGRAS:
 - Use APENAS informações presentes no conteúdo fornecido - nunca invente
-- Para datas: use SOMENTE datas encontradas no conteúdo HTML (meta tags, JSON-LD, texto). NUNCA use a data de hoje como data de publicação
-- Para o campo **Link:**, use SEMPRE a URL exata indicada em [PAGINA_URL: ...] da seção onde encontrou a informação
-- Se não encontrar nada relevante em um site, simplesmente não inclua aquele site
-- Foque em: novos produtos, preços, promoções, lançamentos, campanhas`;
+- Para datas: use SOMENTE datas do conteúdo HTML. NUNCA use a data de hoje como data de publicação
+- Para Link: use SEMPRE a URL exata do [PAGINA_URL] da seção correspondente
+- Se não encontrar nada relevante em um site, não inclua aquele site`;
 
 function extractDates(html: string): string {
   const dates: string[] = [];
-
-  // JSON-LD structured data
   const jsonLdMatches = html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
   for (const match of jsonLdMatches) {
     try {
       const data = JSON.parse(match[1]);
-      const dateFields = ['datePublished', 'dateModified', 'dateCreated'];
-      for (const field of dateFields) {
+      for (const field of ['datePublished', 'dateModified', 'dateCreated']) {
         if (data[field]) dates.push(`[JSON-LD ${field}]: ${data[field]}`);
       }
     } catch {}
   }
-
-  // Open Graph / meta tags
-  const metaDatePatterns = [
-    /meta[^>]*(?:property|name)="(?:article:published_time|article:modified_time|date|pubdate|publish-date)"[^>]*content="([^"]+)"/gi,
-    /meta[^>]*content="([^"]+)"[^>]*(?:property|name)="(?:article:published_time|date|pubdate)"/gi,
-  ];
-  for (const pattern of metaDatePatterns) {
-    const matches = html.matchAll(pattern);
-    for (const m of matches) dates.push(`[meta date]: ${m[1]}`);
-  }
-
-  // Date patterns in visible text (Brazilian format)
-  const textDatePattern = /\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b/g;
-  const textMatches = [...html.matchAll(textDatePattern)].slice(0, 5);
+  const metaPattern = /meta[^>]*(?:property|name)="(?:article:published_time|date|pubdate)"[^>]*content="([^"]+)"/gi;
+  for (const m of html.matchAll(metaPattern)) dates.push(`[meta date]: ${m[1]}`);
+  const textMatches = [...html.matchAll(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b/g)].slice(0, 5);
   for (const m of textMatches) dates.push(`[text date]: ${m[0]}`);
-
-  return dates.length > 0 ? `\nDATAS ENCONTRADAS:\n${dates.join('\n')}` : '';
+  return dates.length > 0 ? `\nDATAS:\n${dates.join('\n')}` : '';
 }
 
 function extractText(html: string, maxChars = 2500): string {
@@ -94,10 +83,6 @@ function extractText(html: string, maxChars = 2500): string {
     .replace(/<footer[\s\S]*?<\/footer>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
     .replace(/&[a-z#0-9]+;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -106,61 +91,127 @@ function extractText(html: string, maxChars = 2500): string {
 
 async function fetchPage(url: string): Promise<{ text: string; dates: string } | null> {
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
-      headers: FETCH_HEADERS,
-    });
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: FETCH_HEADERS });
     if (!res.ok) return null;
     const html = await res.text();
     const text = extractText(html);
-    const dates = extractDates(html);
-    return text.length > 150 ? { text, dates } : null;
-  } catch {
-    return null;
-  }
+    return text.length > 150 ? { text, dates: extractDates(html) } : null;
+  } catch { return null; }
 }
 
 async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: string[] }): Promise<string> {
   const urls = [c.baseUrl, ...c.extraPaths.map(p => c.baseUrl + p)];
   const results = await Promise.all(urls.map(url => fetchPage(url)));
-
   const sections: string[] = [];
-
   results.forEach((result, i) => {
     if (result) {
       const fullUrl = i === 0 ? c.baseUrl : c.baseUrl + c.extraPaths[i - 1];
       sections.push(`[PAGINA_URL: ${fullUrl}]\n${result.text}${result.dates}`);
     }
   });
-
-  if (sections.length === 0) {
-    return `=== ${c.name} ===\nSite inacessível.`;
-  }
-
-  // Up to 3 sections per competitor
+  if (sections.length === 0) return `=== ${c.name} ===\nSite inacessível.`;
   return `=== ${c.name} (${c.baseUrl}) ===\n${sections.slice(0, 3).join('\n\n')}`;
 }
 
+function parseNewsMarkdown(markdown: string): any[] {
+  const items: any[] = [];
+  const sections = markdown.split('### ');
+  for (let i = 1; i < sections.length; i++) {
+    const lines = sections[i].split('\n').map(l => l.trim()).filter(l => l);
+    if (!lines.length) continue;
+    const title = lines[0].replace(/^\*+|\*+$/g, '').trim();
+    let source = '', date = '', sourceType = 'website', url = '';
+
+    const sourceLine = lines.find(l => l.startsWith('**Fonte:**'));
+    if (sourceLine) {
+      const raw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
+      const parts = raw.split('•').map(p => p.trim());
+      const dateIdx = parts.findIndex(p => p.includes('/'));
+      if (dateIdx !== -1) { date = parts[dateIdx]; source = parts.filter((_, j) => j !== dateIdx).join(' • '); }
+      else { source = parts[0] || ''; date = parts[1] || ''; }
+      if (source.toLowerCase().includes('instagram') || source.includes('@')) sourceType = 'instagram';
+    }
+
+    const linkLine = lines.find(l => l.startsWith('**Link:**'));
+    if (linkLine) {
+      let parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
+      const mdUrl = parsedUrl.match(/\[.*?\]\((.*?)\)/);
+      if (mdUrl) parsedUrl = mdUrl[1];
+      if (parsedUrl && !parsedUrl.startsWith('http') && parsedUrl.includes('.')) parsedUrl = 'https://' + parsedUrl;
+      if (parsedUrl.startsWith('http')) url = parsedUrl;
+    }
+
+    if (!url) url = source.includes('@')
+      ? `https://instagram.com/${(source.match(/@([\w.]+)/) || [])[1] || ''}`
+      : `https://google.com/search?q=${encodeURIComponent(title + ' ' + source)}`;
+
+    const tagsLine = lines.find(l => l.toLowerCase().includes('tags:'));
+    const tags: any[] = [];
+    if (tagsLine) {
+      tagsLine.replace(/.*tags:\s*/i, '').split('|').map(t => t.trim()).forEach(t => {
+        let type = 'neutral';
+        if (t.toLowerCase().includes('positivo') || t.includes('🟢')) type = 'positive';
+        else if (t.toLowerCase().includes('negativo') || t.includes('🔴')) type = 'negative';
+        const label = t.replace(/[🟢🔴🟡*]/g, '').trim();
+        if (label) tags.push({ label, type });
+      });
+    }
+
+    const summaryStart = lines.findIndex(l => l.startsWith('**Concorrente:**')) + 1;
+    let summaryEnd = lines.findIndex(l => l.toLowerCase().includes('tags:'));
+    if (summaryEnd === -1) summaryEnd = lines.length;
+    const summary = lines.slice(summaryStart, summaryEnd).join('\n');
+
+    items.push({ id: Math.random().toString(36).substring(7), title, source, source_type: sourceType, date, summary, tags, url });
+  }
+  return items;
+}
+
+// GET /api/news - retorna do banco (rapido, sem scraping)
 app.get('/api/news', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('news_items')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ items: data || [] });
+  } catch (err: any) {
+    console.error('[Backend] DB error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/news/refresh - raspa sites e salva novidades no banco
+app.post('/api/news/refresh', async (_req, res) => {
   try {
     console.log('[Backend] Scraping competitor websites...');
     const scraped = await Promise.all(COMPETITORS.map(scrapeCompetitor));
     const content = scraped.join('\n\n---\n\n');
-
     const today = new Date().toLocaleDateString('pt-BR');
-    console.log('[Backend] Sending to Gemini for analysis...');
 
+    console.log('[Backend] Sending to Gemini...');
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Analise o conteúdo extraído dos websites dos concorrentes da Elleven. Data de hoje (NÃO use como data de publicação): ${today}.\n\nConteudo dos sites:\n\n${content}`,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.1,
-      },
+      contents: `Analise o conteudo extraido dos websites dos concorrentes da Elleven. Data de hoje (NAO use como data de publicacao): ${today}.\n\n${content}`,
+      config: { systemInstruction: SYSTEM_INSTRUCTION, temperature: 0.1 },
     });
 
-    console.log('[Backend] Done. Returning response.');
-    res.json({ markdown: response.text ?? '' });
+    const newItems = parseNewsMarkdown(response.text ?? '');
+    console.log(`[Backend] Found ${newItems.length} items from scraping.`);
+
+    const { data: existing } = await supabase.from('news_items').select('title');
+    const existingTitles = new Set((existing || []).map((r: any) => r.title.toLowerCase().trim()));
+    const toInsert = newItems.filter(item => !existingTitles.has(item.title.toLowerCase().trim()));
+    console.log(`[Backend] ${toInsert.length} new items to save.`);
+
+    if (toInsert.length > 0) {
+      await supabase.from('news_items').insert(toInsert);
+    }
+    await supabase.from('scrape_log').insert({ items_found: newItems.length, items_new: toInsert.length });
+
+    const { data: all } = await supabase.from('news_items').select('*').order('created_at', { ascending: false });
+    res.json({ items: all || [], newCount: toInsert.length });
   } catch (err: any) {
     console.error('[Backend] Error:', err.message);
     res.status(500).json({ error: err.message });

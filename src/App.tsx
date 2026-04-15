@@ -19,136 +19,73 @@ export interface NewsItem {
   url: string;
 }
 
-function parseNewsMarkdown(markdown: string): NewsItem[] {
-  const items: NewsItem[] = [];
-  const sections = markdown.split('### ');
-  
-  for (let i = 1; i < sections.length; i++) {
-    const section = sections[i];
-    const lines = section.split('\n').map(l => l.trim()).filter(l => l);
-    
-    if (lines.length === 0) continue;
-    
-    const title = lines[0].replace(/^\*+|\*+$/g, '').trim();
-    
-    let source = '';
-    let date = '';
-    let sourceType: 'website' | 'instagram' = 'website';
-    
-    const sourceLine = lines.find(l => l.startsWith('**Fonte:**') || l.startsWith('Fonte:'));
-    if (sourceLine) {
-      const sourceRaw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
-      const parts = sourceRaw.split('\u2022').map(p => p.trim());
-      
-      const datePartIndex = parts.findIndex(p => p.includes('/'));
-      if (datePartIndex !== -1) {
-        date = parts[datePartIndex];
-        source = parts.filter((_, i) => i !== datePartIndex).join(' \u2022 ');
-      } else {
-        source = parts[0] || '';
-        date = parts[1] || '';
-      }
-
-      if (source.toLowerCase().includes('instagram') || source.includes('@')) {
-        sourceType = 'instagram';
-      }
-    }
-
-    let url = '';
-    const linkLine = lines.find(l => l.startsWith('**Link:**') || l.startsWith('Link:'));
-    if (linkLine) {
-      let parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
-      const mdUrl = parsedUrl.match(/\[.*?\]\((.*?)\)/);
-      if (mdUrl) parsedUrl = mdUrl[1];
-      if (parsedUrl && !parsedUrl.startsWith('http') && parsedUrl.includes('.')) {
-        parsedUrl = 'https://' + parsedUrl;
-      }
-      if (parsedUrl.startsWith('http')) {
-        url = parsedUrl;
-      }
-    }
-
-    if (!url) {
-      if (source.toLowerCase().includes('instagram')) {
-        const handleMatch = source.match(/@([\w.]+)/);
-        if (handleMatch) {
-          url = `https://instagram.com/${handleMatch[1]}`;
-        } else {
-          url = `https://instagram.com/explore/tags/${encodeURIComponent(title.split(' ')[0])}`;
-        }
-      } else {
-        url = `https://google.com/search?q=${encodeURIComponent(title + ' ' + source)}`;
-      }
-    }
-    
-    const tagsLine = lines.find(l => l.toLowerCase().includes('tags:'));
-    const tags: { label: string; type: 'positive' | 'negative' | 'neutral' }[] = [];
-    if (tagsLine) {
-      const tagsRaw = tagsLine.replace(/.*tags:\s*/i, '').split('|').map(t => t.trim());
-      tagsRaw.forEach(t => {
-        let type: 'positive' | 'negative' | 'neutral' = 'neutral';
-        const lowerT = t.toLowerCase();
-        if (lowerT.includes('positivo') || lowerT.includes('\ud83d\udfe2')) type = 'positive';
-        else if (lowerT.includes('negativo') || lowerT.includes('\ud83d\udd34')) type = 'negative';
-        else if (lowerT.includes('neutro') || lowerT.includes('\ud83d\udfe1')) type = 'neutral';
-        
-        const label = t.replace(/[\ud83d\udfe2\ud83d\udd34\ud83d\udfe1*]/g, '').trim();
-        if (label) {
-          tags.push({ label, type });
-        }
-      });
-    }
-    
-    const summaryStartIndex = lines.findIndex(l => l.startsWith('**Concorrente:**') || l.startsWith('Concorrente:')) + 1;
-    let summaryEndIndex = lines.findIndex(l => l.toLowerCase().includes('tags:'));
-    if (summaryEndIndex === -1) summaryEndIndex = lines.length;
-    
-    const summary = lines.slice(summaryStartIndex, summaryEndIndex).join('\n');
-    
-    items.push({
-      id: Math.random().toString(36).substring(7),
-      title,
-      source,
-      sourceType,
-      date,
-      summary,
-      tags,
-      url
-    });
-  }
-  
-  return items;
+function mapDbItem(item: any): NewsItem {
+  return {
+    id: item.id,
+    title: item.title,
+    source: item.source,
+    sourceType: item.source_type === 'instagram' ? 'instagram' : 'website',
+    date: item.date,
+    summary: item.summary,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    url: item.url,
+  };
 }
 
 export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeNewsItem, setActiveNewsItem] = useState<NewsItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [newCount, setNewCount] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const fetchNews = async () => {
+  const loadFromDb = async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/news');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      const markdown = data.markdown || '';
-      console.log('=== RESPOSTA BACKEND ===', markdown);
-      const parsedNews = parseNewsMarkdown(markdown);
-      setNews(parsedNews.length > 0 ? parsedNews : []);
+      setNews((data.items || []).map(mapDbItem));
+      setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (err: any) {
-      console.error("Failed to fetch news", err);
-      setError('Erro ao buscar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
-      setNews([]);
+      console.error('Failed to load news from DB', err);
+      setError('Erro ao carregar notícias. Verifique se o servidor backend está rodando.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const refreshNews = async () => {
+    setIsRefreshing(true);
+    setError(null);
+    setNewCount(null);
+    try {
+      const response = await fetch('/api/news/refresh', { method: 'POST' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      setNews((data.items || []).map(mapDbItem));
+      setNewCount(data.newCount ?? 0);
+      setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+    } catch (err: any) {
+      console.error('Failed to refresh news', err);
+      setError('Erro ao buscar notícias. Verifique se o servidor backend está rodando.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    fetchNews();
+    loadFromDb();
   }, []);
+
+  const statusText = lastUpdated
+    ? newCount !== null
+      ? `${newCount} nova${newCount !== 1 ? 's' : ''} • atualizado ${lastUpdated}`
+      : `atualizado ${lastUpdated}`
+    : null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e5e5e5] font-sans pb-20">
@@ -161,14 +98,19 @@ export default function App() {
             <text x="36" y="25" fontFamily="sans-serif" fontWeight="800" fontSize="26" fill="currentColor" letterSpacing="-0.5">elleven</text>
           </svg>
         </div>
-        <button 
-          onClick={fetchNews}
-          disabled={isLoading}
-          className="bg-transparent border border-[#2a2a2a] text-gray-400 px-4 py-2 rounded-lg text-sm hover:border-[#404040] hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-3">
+          {statusText && !isRefreshing && (
+            <span className="text-xs text-gray-500">{statusText}</span>
+          )}
+          <button
+            onClick={refreshNews}
+            disabled={isRefreshing || isLoading}
+            className="bg-transparent border border-[#2a2a2a] text-gray-400 px-4 py-2 rounded-lg text-sm hover:border-[#404040] hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Buscando...' : 'Atualizar'}
+          </button>
+        </div>
       </header>
 
       <main>
@@ -182,19 +124,19 @@ export default function App() {
         {activeNewsItem ? (
           <DeepDive item={activeNewsItem} onBack={() => setActiveNewsItem(null)} />
         ) : (
-          <NewsFeed news={news} isLoading={isLoading} onDeepDive={setActiveNewsItem} />
+          <NewsFeed news={news} isLoading={isLoading || isRefreshing} onDeepDive={setActiveNewsItem} />
         )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-[#1a1a1a] flex justify-around py-3 z-20">
-        <button 
+        <button
           onClick={() => setActiveNewsItem(null)}
           className="flex flex-col items-center gap-1 text-xs font-medium transition-colors text-white"
         >
           <Home className="w-6 h-6" />
           RESUMO
         </button>
-        <button 
+        <button
           onClick={() => alert('Perfil em desenvolvimento')}
           className="flex flex-col items-center gap-1 text-gray-500 text-xs font-medium transition-colors hover:text-gray-300"
         >
