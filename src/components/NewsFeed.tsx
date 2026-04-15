@@ -33,10 +33,13 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
     .sort((a, b) => {
       const ta = parseDateBR(a.date);
       const tb = parseDateBR(b.date);
-      if (ta === 0 && tb === 0) return 0;
-      if (ta === 0) return 1;
-      if (tb === 0) return -1;
-      return tb - ta;
+      if (ta !== 0 || tb !== 0) {
+        if (ta === 0) return 1;
+        if (tb === 0) return -1;
+        if (tb !== ta) return tb - ta;
+      }
+      // tiebreaker: mais recentemente adicionado ao banco primeiro
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
   return (

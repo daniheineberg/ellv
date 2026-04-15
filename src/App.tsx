@@ -11,6 +11,7 @@ import { DeepDive } from './components/DeepDive';
 export interface NewsItem {
   id: string;
   date: string;
+  createdAt: string;
   source: string;
   sourceType: 'website' | 'instagram';
   title: string;
@@ -26,6 +27,7 @@ function mapDbItem(item: any): NewsItem {
     source: item.source,
     sourceType: item.source_type === 'instagram' ? 'instagram' : 'website',
     date: item.date,
+    createdAt: item.created_at,
     summary: item.summary,
     tags: Array.isArray(item.tags) ? item.tags : [],
     url: item.url,
@@ -52,7 +54,7 @@ export default function App() {
       setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (err: any) {
       console.error('Failed to load news from DB', err);
-      setError('Erro ao carregar notícias. Verifique se o servidor backend está rodando.');
+      setError('Erro ao carregar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +73,7 @@ export default function App() {
       setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (err: any) {
       console.error('Failed to refresh news', err);
-      setError('Erro ao buscar notícias. Verifique se o servidor backend está rodando.');
+      setError('Erro ao buscar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
     } finally {
       setIsRefreshing(false);
     }
@@ -83,7 +85,7 @@ export default function App() {
 
   const statusText = lastUpdated
     ? newCount !== null
-      ? `${newCount} nova${newCount !== 1 ? 's' : ''} • atualizado ${lastUpdated}`
+      ? `${newCount} nova${newCount !== 1 ? 's' : ''} \u2022 atualizado ${lastUpdated}`
       : `atualizado ${lastUpdated}`
     : null;
 
