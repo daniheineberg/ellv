@@ -8,19 +8,36 @@ interface NewsFeedProps {
   onDeepDive: (item: NewsItem) => void;
 }
 
+function parseDateBR(dateStr: string): number {
+  if (!dateStr || dateStr.toLowerCase().includes('n\u00e3o achei')) return 0;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return 0;
+  const [d, m, y] = parts;
+  const ts = new Date(+y, +m - 1, +d).getTime();
+  return isNaN(ts) ? 0 : ts;
+}
+
 export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
   const [activeTab, setActiveTab] = useState('Website');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
 
-  const filteredNews = news.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          item.summary.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTab = activeTab === 'Website' ? item.sourceType === 'website' : item.sourceType === 'instagram';
-    const matchesTag = activeTag ? item.tags.some(t => t.label === activeTag) : true;
-    
-    return matchesSearch && matchesTab && matchesTag;
-  });
+  const filteredNews = news
+    .filter(item => {
+      const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            item.summary.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesTab = activeTab === 'Website' ? item.sourceType === 'website' : item.sourceType === 'instagram';
+      const matchesTag = activeTag ? item.tags.some(t => t.label === activeTag) : true;
+      return matchesSearch && matchesTab && matchesTag;
+    })
+    .sort((a, b) => {
+      const ta = parseDateBR(a.date);
+      const tb = parseDateBR(b.date);
+      if (ta === 0 && tb === 0) return 0;
+      if (ta === 0) return 1;
+      if (tb === 0) return -1;
+      return tb - ta;
+    });
 
   return (
     <div className="max-w-3xl mx-auto p-6 pb-32">
@@ -48,7 +65,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar notícias..."
+          placeholder="Buscar not\u00edcias..."
           className="w-full bg-[#111] border border-[#1a1a1a] rounded-xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#2a2a2a] transition-colors placeholder:text-[#404040]"
         />
       </div>
@@ -69,7 +86,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-            <p>Analisando mercado e gerando inteligência competitiva...</p>
+            <p>Analisando mercado e gerando intelig\u00eancia competitiva...</p>
           </div>
         ) : filteredNews.length > 0 ? (
           filteredNews.map((item) => (
@@ -79,7 +96,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
               onClick={() => onDeepDive(item)}
             >
               <div className="text-sm text-gray-500 mb-3 flex items-center gap-2">
-                {item.date} • {item.source}
+                {item.date} \u2022 {item.source}
               </div>
               <div className="text-xl font-semibold leading-snug mb-4 text-white pr-20">
                 {item.title}
@@ -122,7 +139,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
           ))
         ) : (
           <div className="text-center text-gray-500 py-12">
-            Nenhuma notícia encontrada para os filtros atuais.
+            Nenhuma not\u00edcia encontrada para os filtros atuais.
           </div>
         )}
       </div>
