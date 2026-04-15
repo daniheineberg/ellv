@@ -38,7 +38,7 @@ Analise o conteúdo HTML extraído dos sites dos concorrentes e gere um resumo e
 Para cada informação relevante encontrada (produto novo, promoção, preço, lançamento), use EXATAMENTE este formato:
 
 ### [Título objetivo]
-**Fonte:** [Nome do site] • [Data REAL encontrada no conteúdo - use formato DD/MM/AAAA. Se não encontrar data real, deixe em branco]
+**Fonte:** [Nome do site] • [Data REAL encontrada no conteúdo - use formato DD/MM/AAAA. Se não encontrar data real, escreva exatamente: Não achei data]
 **Link:** [URL exata indicada em PAGINA_URL da seção onde encontrou a informação]
 **Concorrente:** [Nome da marca]
 
@@ -126,7 +126,7 @@ function parseNewsMarkdown(markdown: string): any[] {
     if (sourceLine) {
       const raw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
       const parts = raw.split('•').map(p => p.trim());
-      const dateIdx = parts.findIndex(p => p.includes('/'));
+      const dateIdx = parts.findIndex(p => p.includes('/') || p.toLowerCase().includes('não achei'));
       if (dateIdx !== -1) { date = parts[dateIdx]; source = parts.filter((_, j) => j !== dateIdx).join(' • '); }
       else { source = parts[0] || ''; date = parts[1] || ''; }
       if (source.toLowerCase().includes('instagram') || source.includes('@')) sourceType = 'instagram';
