@@ -25,37 +25,18 @@ const COMPETITORS = [
   { name: 'Clube B2B', baseUrl: 'https://clubeb2b.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/produtos'] },
 ];
 
+const INSTAGRAM_HANDLES = [
+  'absolutebikes', 'isapabikes', 'gtabikes', 'tswbicycle',
+  'sensebikes', 'lmbikes', 'wipbikes', 'clubeb2b',
+];
+
 const FETCH_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
 };
 
-const SYSTEM_INSTRUCTION = `Você é um assistente de inteligência competitiva para a Elleven, empresa de bicicletas brasileira (faixa R$ 800-3000, foco em iniciantes e entusiastas no Brasil).
-
-Analise o conteúdo HTML extraído dos sites dos concorrentes e gere um resumo executivo. Use APENAS fatos concretos presentes no conteúdo fornecido.
-
-Para cada informação relevante encontrada (produto novo, promoção, preço, lançamento), use EXATAMENTE este formato:
-
-### [Título objetivo]
-**Fonte:** [Nome do site] • [Data REAL encontrada no conteúdo - use formato DD/MM/AAAA. Se não encontrar data real, escreva exatamente: Não achei data]
-**Link:** [URL exata indicada em PAGINA_URL da seção onde encontrou a informação]
-**Concorrente:** [Nome da marca]
-
-[2-3 frases: O QUE foi encontrado, IMPACTO potencial para Elleven, CONTEXTO relevante]
-
-**Tags:** [🟢 POSITIVO / 🔴 NEGATIVO / 🟡 NEUTRO] | [CATEGORIA] | [SEGMENTO]
-
----
-
-CATEGORIAS: PRODUTO | PREÇO | MARKETING | DISTRIBUIÇÃO | PARCERIA | OPERAÇÕES | TECH | PERFORMANCE
-SEGMENTOS: MTB | URBANO | GRAVEL | INFANTIL | SPEED | E-BIKE | PEÇAS
-
-REGRAS:
-- Use APENAS informações presentes no conteúdo fornecido - nunca invente
-- Para datas: use SOMENTE datas do conteúdo HTML. NUNCA use a data de hoje como data de publicação
-- Para Link: use SEMPRE a URL exata do [PAGINA_URL] da seção correspondente
-- Se não encontrar nada relevante em um site, não inclua aquele site`;
+const SYSTEM_INSTRUCTION = `Voc\u00ea \u00e9 um assistente de intelig\u00eancia competitiva para a Elleven, empresa de bicicletas brasileira (faixa R$ 800-3000, foco em iniciantes e entusiastas no Brasil).\n\nAnalise o conte\u00fado extra\u00eddo dos sites e do Instagram dos concorrentes e gere um resumo executivo. Use APENAS fatos concretos presentes no conte\u00fado fornecido.\n\nPara cada informa\u00e7\u00e3o relevante encontrada (produto novo, promo\u00e7\u00e3o, pre\u00e7o, lan\u00e7amento), use EXATAMENTE este formato:\n\n### [T\u00edtulo objetivo]\n**Fonte:** [Para sites: Nome do site | Para Instagram: @handle] \u2022 [Data REAL encontrada no conte\u00fado - use formato DD/MM/AAAA. Se n\u00e3o encontrar data real, escreva exatamente: N\u00e3o achei data]\n**Link:** [URL exata indicada em PAGINA_URL da se\u00e7\u00e3o onde encontrou a informa\u00e7\u00e3o]\n**Concorrente:** [Nome da marca]\n\n[2-3 frases: O QUE foi encontrado, IMPACTO potencial para Elleven, CONTEXTO relevante]\n\n**Tags:** [\ud83d\udfe2 POSITIVO / \ud83d\udd34 NEGATIVO / \ud83d\udfe1 NEUTRO] | [CATEGORIA] | [SEGMENTO]\n\n---\n\nCATEGORIAS: PRODUTO | PRE\u00c7O | MARKETING | DISTRIBUI\u00c7\u00c3O | PARCERIA | OPERA\u00c7\u00d5ES | TECH | PERFORMANCE\nSEGMENTOS: MTB | URBANO | GRAVEL | INFANTIL | SPEED | E-BIKE | PE\u00c7AS\n\nREGRAS:\n- Use APENAS informa\u00e7\u00f5es presentes no conte\u00fado fornecido - nunca invente\n- Para datas: use SOMENTE datas do conte\u00fado HTML ou do campo DATA do Instagram. NUNCA use a data de hoje como data de publica\u00e7\u00e3o\n- Para Link: use SEMPRE a URL exata do [PAGINA_URL] da se\u00e7\u00e3o correspondente\n- Para Instagram: a Fonte deve ser o @handle (ex: @absolutebikes), n\u00e3o o nome completo\n- Se n\u00e3o encontrar nada relevante em um site ou perfil, n\u00e3o inclua aquele concorrente`;
 
 function extractDates(html: string): string {
   const dates: string[] = [];
@@ -109,8 +90,59 @@ async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: 
       sections.push(`[PAGINA_URL: ${fullUrl}]\n${result.text}${result.dates}`);
     }
   });
-  if (sections.length === 0) return `=== ${c.name} ===\nSite inacessível.`;
+  if (sections.length === 0) return `=== ${c.name} ===\nSite inacess\u00edvel.`;
   return `=== ${c.name} (${c.baseUrl}) ===\n${sections.slice(0, 3).join('\n\n')}`;
+}
+
+async function scrapeInstagram(): Promise<string> {
+  const apiKey = process.env.APIFY_API_KEY;
+  if (!apiKey) {
+    console.log('[Backend] APIFY_API_KEY n\u00e3o configurada, pulando Instagram.');
+    return '';
+  }
+
+  const urls = INSTAGRAM_HANDLES.map(h => `https://www.instagram.com/${h}/`);
+  console.log(`[Backend] Buscando ${INSTAGRAM_HANDLES.length} perfis no Instagram via Apify...`);
+
+  try {
+    const response = await fetch(
+      `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${apiKey}&timeout=120`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          directUrls: urls,
+          resultsType: 'posts',
+          resultsLimit: 5,
+        }),
+        signal: AbortSignal.timeout(150000),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`[Backend] Apify retornou ${response.status}`);
+      return '';
+    }
+
+    const posts: any[] = await response.json();
+    console.log(`[Backend] ${posts.length} posts do Instagram recebidos.`);
+    if (!posts.length) return '';
+
+    const sections = posts.map(post => {
+      const handle = post.ownerUsername || '';
+      const date = post.timestamp
+        ? new Date(post.timestamp).toLocaleDateString('pt-BR')
+        : 'N\u00e3o achei data';
+      const caption = (post.caption || '').substring(0, 600);
+      const url = post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '');
+      return `[PAGINA_URL: ${url}]\n[PERFIL: @${handle}]\n[DATA: ${date}]\nCAPTION: ${caption}`;
+    });
+
+    return `=== INSTAGRAM DOS CONCORRENTES ===\n${sections.join('\n\n')}`;
+  } catch (err: any) {
+    console.error('[Backend] Erro no Apify:', err.message);
+    return '';
+  }
 }
 
 function parseNewsMarkdown(markdown: string): any[] {
@@ -125,9 +157,9 @@ function parseNewsMarkdown(markdown: string): any[] {
     const sourceLine = lines.find(l => l.startsWith('**Fonte:**'));
     if (sourceLine) {
       const raw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
-      const parts = raw.split('•').map(p => p.trim());
-      const dateIdx = parts.findIndex(p => p.includes('/') || p.toLowerCase().includes('não achei'));
-      if (dateIdx !== -1) { date = parts[dateIdx]; source = parts.filter((_, j) => j !== dateIdx).join(' • '); }
+      const parts = raw.split('\u2022').map(p => p.trim());
+      const dateIdx = parts.findIndex(p => p.includes('/') || p.toLowerCase().includes('n\u00e3o achei'));
+      if (dateIdx !== -1) { date = parts[dateIdx]; source = parts.filter((_, j) => j !== dateIdx).join(' \u2022 '); }
       else { source = parts[0] || ''; date = parts[1] || ''; }
       if (source.toLowerCase().includes('instagram') || source.includes('@')) sourceType = 'instagram';
     }
@@ -150,9 +182,9 @@ function parseNewsMarkdown(markdown: string): any[] {
     if (tagsLine) {
       tagsLine.replace(/.*tags:\s*/i, '').split('|').map(t => t.trim()).forEach(t => {
         let type = 'neutral';
-        if (t.toLowerCase().includes('positivo') || t.includes('🟢')) type = 'positive';
-        else if (t.toLowerCase().includes('negativo') || t.includes('🔴')) type = 'negative';
-        const label = t.replace(/[🟢🔴🟡*]/g, '').trim();
+        if (t.toLowerCase().includes('positivo') || t.includes('\ud83d\udfe2')) type = 'positive';
+        else if (t.toLowerCase().includes('negativo') || t.includes('\ud83d\udd34')) type = 'negative';
+        const label = t.replace(/[\ud83d\udfe2\ud83d\udd34\ud83d\udfe1*]/g, '').trim();
         if (label) tags.push({ label, type });
       });
     }
@@ -182,28 +214,36 @@ app.get('/api/news', async (_req, res) => {
   }
 });
 
-// POST /api/news/refresh - raspa sites e salva novidades no banco
+// POST /api/news/refresh - raspa sites + instagram e salva novidades no banco
 app.post('/api/news/refresh', async (_req, res) => {
   try {
-    console.log('[Backend] Scraping competitor websites...');
-    const scraped = await Promise.all(COMPETITORS.map(scrapeCompetitor));
-    const content = scraped.join('\n\n---\n\n');
+    console.log('[Backend] Scraping websites e Instagram...');
+    const [scraped, instagramContent] = await Promise.all([
+      Promise.all(COMPETITORS.map(scrapeCompetitor)),
+      scrapeInstagram(),
+    ]);
+
+    const websiteContent = scraped.join('\n\n---\n\n');
+    const content = instagramContent
+      ? `${websiteContent}\n\n---\n\n${instagramContent}`
+      : websiteContent;
+
     const today = new Date().toLocaleDateString('pt-BR');
 
-    console.log('[Backend] Sending to Gemini...');
+    console.log('[Backend] Enviando para Gemini...');
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Analise o conteudo extraido dos websites dos concorrentes da Elleven. Data de hoje (NAO use como data de publicacao): ${today}.\n\n${content}`,
+      contents: `Analise o conteudo extraido dos websites e Instagram dos concorrentes da Elleven. Data de hoje (NAO use como data de publicacao): ${today}.\n\n${content}`,
       config: { systemInstruction: SYSTEM_INSTRUCTION, temperature: 0.1 },
     });
 
     const newItems = parseNewsMarkdown(response.text ?? '');
-    console.log(`[Backend] Found ${newItems.length} items from scraping.`);
+    console.log(`[Backend] ${newItems.length} itens encontrados.`);
 
     const { data: existing } = await supabase.from('news_items').select('title');
     const existingTitles = new Set((existing || []).map((r: any) => r.title.toLowerCase().trim()));
     const toInsert = newItems.filter(item => !existingTitles.has(item.title.toLowerCase().trim()));
-    console.log(`[Backend] ${toInsert.length} new items to save.`);
+    console.log(`[Backend] ${toInsert.length} itens novos para salvar.`);
 
     if (toInsert.length > 0) {
       await supabase.from('news_items').insert(toInsert);
