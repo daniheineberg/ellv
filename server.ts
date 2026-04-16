@@ -1,7 +1,6 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
-import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -344,19 +343,10 @@ app.delete('/api/handles/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Servir frontend em produção
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(process.cwd(), 'dist')));
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
-  });
-}
-
 export default app;
 
-// Iniciar servidor apenas quando executado diretamente (não pelo Vercel)
-const isMain = process.argv[1]?.endsWith('server.ts') || process.argv[1]?.endsWith('server.js');
-if (isMain) {
+// Iniciar servidor apenas em dev local
+if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3001;
   app.listen(PORT, () => console.log(`✓ Backend rodando na porta ${PORT}`));
 }
