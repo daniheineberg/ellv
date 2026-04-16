@@ -58,20 +58,36 @@ function extractDates(html: string): string {
 
 function extractArticleLinks(html: string, baseUrl: string, listingUrl: string): string[] {
   const links: string[] = [];
-  for (const match of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
-    let url = match[1];
-    if (url.startsWith('/')) url = baseUrl + url;
-    if (
-      url.startsWith(baseUrl) &&
-      url !== baseUrl &&
-      url !== listingUrl &&
-      !url.match(/\.(css|js|jpg|jpeg|png|gif|svg|ico|pdf|webp|mp4|zip)$/i) &&
-      !url.match(/\/(category|tag|page|author|feed|wp-|cart|checkout|account|login)\//i)
-    ) links.push(url);
+  for (const match of html.matchAll(/href=["']([^"'#]+)["']/gi)) {
+    let href = match[1].split('?')[0].split('#')[0];
+    if (!href || href === '/' || href.startsWith('//') || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+    if (href.startsWith('/')) href = baseUrl + href;
+    if (!href.startsWith(baseUrl)) continue;
+    if (href === baseUrl || href === baseUrl + '/' || href === listingUrl || href === listingUrl + '/') continue;
+    if (href.match(/\.(css|js|jpg|jpeg|png|gif|svg|ico|pdf|webp|mp4|zip|woff|woff2|ttf|eot)$/i)) continue;
+    if (href.match(/\/(wp-content|wp-json|wp-admin|wp-login|wp-signup|category|tag|page\/\d|author|feed|cart|checkout|account|login|downloads|lojas|perguntas|garantia|carrinho|conta|politica|privacidade|termos)\b/i)) continue;
+    links.push(href);
   }
   return [...new Set(links)]
-    .filter(url => url.replace(baseUrl, '').split('/').filter(Boolean).length >= 1)
-    .slice(0, 10);
+    .filter(url => {
+      const slug = url.replace(baseUrl, '').replace(/\/$/, '').split('/').pop() || '';
+      return slug.length > 8;
+    })
+    .slice(0, 15);
+}
+
+async function fetchWordPressRecentPosts(baseUrl: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `${baseUrl}/wp-json/wp/v2/posts?per_page=5&_fields=link,date,title,excerpt`,
+      { signal: AbortSignal.timeout(8000), headers: FETCH_HEADERS }
+    );
+    if (!res.ok) return [];
+    const posts = await res.json();
+    if (!Array.isArray(posts)) return [];
+    console.log(`[Backend] WordPress API ${baseUrl}: ${posts.length} posts encontrados`);
+    return posts.map((p: any) => p.link).filter(Boolean);
+  } catch { return []; }
 }
 
 function extractText(html: string, maxChars = 2500): string {
@@ -105,21 +121,28 @@ async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: 
   const home = await fetchPage(c.baseUrl);
   if (home) sections.push(`[PAGINA_URL: ${c.baseUrl}]\n${home.text}${home.dates}`);
 
-  // 2. Listing pages — extrair links de artigos
+  // 2. WordPress API (mais confiável que parsing HTML)
+  const wpPosts = await fetchWordPressRecentPosts(c.baseUrl);
+
+  // 3. Listing pages como fallback — extrair links de artigos
   const listingPaths = ['/blog', '/noticias', '/novidades', '/lancamentos'];
-  const articleLinks: string[] = [];
+  const htmlLinks: string[] = [];
 
   const listingResults = await Promise.all(listingPaths.map(p => fetchPage(c.baseUrl + p)));
   listingResults.forEach((result, i) => {
     if (result) {
       const url = c.baseUrl + listingPaths[i];
       sections.push(`[PAGINA_URL: ${url}]\n${result.text}${result.dates}`);
-      articleLinks.push(...extractArticleLinks(result.html, c.baseUrl, url));
+      htmlLinks.push(...extractArticleLinks(result.html, c.baseUrl, url));
     }
   });
 
-  // 3. Raspar os 4 primeiros artigos encontrados
-  const uniqueArticles = [...new Set(articleLinks)].slice(0, 4);
+  // WordPress posts têm prioridade; completa com links extraídos do HTML
+  const articleLinks = [...new Set([...wpPosts, ...htmlLinks])];
+
+  // 4. Raspar até 5 artigos
+  const uniqueArticles = articleLinks.slice(0, 5);
+  console.log(`[Backend] ${c.name} artigos para scraping:`, uniqueArticles);
   if (uniqueArticles.length > 0) {
     const articleResults = await Promise.all(uniqueArticles.map(url => fetchPage(url)));
     articleResults.forEach((result, i) => {
@@ -127,7 +150,7 @@ async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: 
     });
   }
 
-  // 4. Páginas de produtos (se ainda não cheio)
+  // 5. Páginas de produtos (se ainda não cheio)
   if (sections.length < 5) {
     const productResults = await Promise.all(['/bicicletas', '/produtos'].map(p => fetchPage(c.baseUrl + p)));
     productResults.forEach((result, i) => {
