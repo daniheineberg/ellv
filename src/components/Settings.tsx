@@ -21,9 +21,12 @@ export function Settings({ onClose }: SettingsProps) {
 
   useEffect(() => {
     fetch('/api/handles')
-      .then(r => r.json())
-      .then(data => { setHandles(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(async r => {
+        if (!r.ok) throw new Error(`Erro ${r.status}`);
+        return r.json();
+      })
+      .then(data => { setHandles(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(err => { setError(err.message); setLoading(false); });
   }, []);
 
   const add = async () => {
