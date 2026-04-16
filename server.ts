@@ -353,5 +353,16 @@ app.delete('/api/handles/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-const PORT = 3001;
+// Servir frontend em produção
+if (process.env.NODE_ENV === 'production') {
+  const { default: path } = await import('path');
+  app.use(express.static(path.join(process.cwd(), 'dist')));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
+    }
+  });
+}
+
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`\u2713 Backend rodando na porta ${PORT}`));
