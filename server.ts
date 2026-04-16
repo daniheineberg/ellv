@@ -15,14 +15,15 @@ const supabase = createClient(
 );
 
 const COMPETITORS = [
-  { name: 'Absolute', baseUrl: 'https://absolutebikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'Isapa', baseUrl: 'https://isapa.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'GTA', baseUrl: 'https://gtabikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'TSW', baseUrl: 'https://tswbicycle.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'Sense', baseUrl: 'https://sensebikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'LM Bikes', baseUrl: 'https://lmbikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'Wip Bikes', baseUrl: 'https://wipbikes.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/bicicletas', '/produtos'] },
-  { name: 'Clube B2B', baseUrl: 'https://clubeb2b.com.br', extraPaths: ['/blog', '/noticias', '/novidades', '/lancamentos', '/produtos'] },
+  { name: 'Absolute', baseUrl: 'https://absolutebikes.com.br', extraPaths: [] },
+  { name: 'Isapa', baseUrl: 'https://isapa.com.br', extraPaths: [] },
+  { name: 'GTA / Julio Ando', baseUrl: 'https://julioando.com.br', extraPaths: [] },
+  { name: 'TSW', baseUrl: 'https://tswbike.com', extraPaths: [] },
+  { name: 'Sense', baseUrl: 'https://www.sensebike.com.br', extraPaths: [] },
+  { name: 'LM Bikes', baseUrl: 'https://portal.lmbike.com.br/glstorefront/glbikes/pt/BRL', extraPaths: [] },
+  { name: 'Wip Bikes', baseUrl: 'https://www.wipb2b.com.br', extraPaths: [] },
+  { name: 'Clube B2B', baseUrl: 'https://clubeb2b.com.br', extraPaths: [] },
+  { name: 'Clube B2B Blog', baseUrl: 'https://blog.clubeb2b.com.br', extraPaths: [] },
 ];
 
 const INSTAGRAM_HANDLES = [
