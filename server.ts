@@ -65,12 +65,13 @@ function extractArticleLinks(html: string, baseUrl: string, listingUrl: string):
       url.startsWith(baseUrl) &&
       url !== baseUrl &&
       url !== listingUrl &&
-      !url.match(/\.(css|js|jpg|jpeg|png|gif|svg|ico|pdf|webp|mp4|zip)$/i)
+      !url.match(/\.(css|js|jpg|jpeg|png|gif|svg|ico|pdf|webp|mp4|zip)$/i) &&
+      !url.match(/\/(category|tag|page|author|feed|wp-|cart|checkout|account|login)\//i)
     ) links.push(url);
   }
   return [...new Set(links)]
-    .filter(url => url.replace(baseUrl, '').split('/').filter(Boolean).length >= 2)
-    .slice(0, 8);
+    .filter(url => url.replace(baseUrl, '').split('/').filter(Boolean).length >= 1)
+    .slice(0, 10);
 }
 
 function extractText(html: string, maxChars = 2500): string {
@@ -145,7 +146,10 @@ async function scrapeInstagram(): Promise<string> {
     return '';
   }
 
-  const urls = INSTAGRAM_HANDLES.map(h => `https://www.instagram.com/${h}/`);
+  const { data: handlesData } = await supabase.from('instagram_handles').select('handle');
+  const handles = handlesData?.map((h: any) => h.handle) ?? INSTAGRAM_HANDLES;
+
+  const urls = handles.map((h: string) => `https://www.instagram.com/${h}/`);
   console.log(`[Backend] Buscando ${INSTAGRAM_HANDLES.length} perfis no Instagram via Apify...`);
 
   try {
@@ -300,6 +304,29 @@ app.post('/api/news/refresh', async (_req, res) => {
     console.error('[Backend] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// --- Handles CRUD ---
+
+app.get('/api/handles', async (_req, res) => {
+  const { data, error } = await supabase.from('instagram_handles').select('*').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.post('/api/handles', async (req, res) => {
+  const { handle, name } = req.body;
+  if (!handle || !name) return res.status(400).json({ error: 'handle e name são obrigatórios' });
+  const clean = handle.replace(/^@/, '');
+  const { data, error } = await supabase.from('instagram_handles').insert({ handle: clean, name }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/handles/:id', async (req, res) => {
+  const { error } = await supabase.from('instagram_handles').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 const PORT = 3001;

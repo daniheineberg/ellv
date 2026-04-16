@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Home, User, RefreshCw } from 'lucide-react';
+import { Home, User, RefreshCw, Settings2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { NewsFeed } from './components/NewsFeed';
 import { DeepDive } from './components/DeepDive';
+import { Settings } from './components/Settings';
 
 export interface NewsItem {
   id: string;
@@ -42,6 +43,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [newCount, setNewCount] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const loadFromDb = async () => {
     setIsLoading(true);
@@ -91,6 +93,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e5e5e5] font-sans pb-20">
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       <header className="p-6 border-b border-[#1a1a1a] flex justify-between items-center">
         <div className="flex items-center">
           <svg height="28" viewBox="0 0 140 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
@@ -104,6 +107,13 @@ export default function App() {
           {statusText && !isRefreshing && (
             <span className="text-xs text-gray-500">{statusText}</span>
           )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="bg-transparent border border-[#2a2a2a] text-gray-400 p-2 rounded-lg hover:border-[#404040] hover:text-white transition-colors"
+            title="Configurações"
+          >
+            <Settings2 className="w-4 h-4" />
+          </button>
           <button
             onClick={refreshNews}
             disabled={isRefreshing || isLoading}
