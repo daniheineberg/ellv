@@ -26,8 +26,8 @@ const COMPETITORS = [
 ];
 
 const INSTAGRAM_HANDLES = [
-  'absolutebikes', 'isapabikes', 'gtabikes', 'tswbicycle',
-  'sensebikes', 'lmbikes', 'wipbikes', 'clubeb2b',
+  'absolutebike', 'isapabike', 'gtabike', 'tswbike',
+  'sensebike', 'lmbikeoficial', 'wipbikes', 'b2bclube',
 ];
 
 const FETCH_HEADERS = {
@@ -56,6 +56,23 @@ function extractDates(html: string): string {
   return dates.length > 0 ? `\nDATAS:\n${dates.join('\n')}` : '';
 }
 
+function extractArticleLinks(html: string, baseUrl: string, listingUrl: string): string[] {
+  const links: string[] = [];
+  for (const match of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
+    let url = match[1];
+    if (url.startsWith('/')) url = baseUrl + url;
+    if (
+      url.startsWith(baseUrl) &&
+      url !== baseUrl &&
+      url !== listingUrl &&
+      !url.match(/\.(css|js|jpg|jpeg|png|gif|svg|ico|pdf|webp|mp4|zip)$/i)
+    ) links.push(url);
+  }
+  return [...new Set(links)]
+    .filter(url => url.replace(baseUrl, '').split('/').filter(Boolean).length >= 2)
+    .slice(0, 8);
+}
+
 function extractText(html: string, maxChars = 2500): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -70,28 +87,55 @@ function extractText(html: string, maxChars = 2500): string {
     .substring(0, maxChars);
 }
 
-async function fetchPage(url: string): Promise<{ text: string; dates: string } | null> {
+async function fetchPage(url: string): Promise<{ text: string; dates: string; html: string } | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: FETCH_HEADERS });
     if (!res.ok) return null;
     const html = await res.text();
     const text = extractText(html);
-    return text.length > 150 ? { text, dates: extractDates(html) } : null;
+    return text.length > 150 ? { text, dates: extractDates(html), html } : null;
   } catch { return null; }
 }
 
 async function scrapeCompetitor(c: { name: string; baseUrl: string; extraPaths: string[] }): Promise<string> {
-  const urls = [c.baseUrl, ...c.extraPaths.map(p => c.baseUrl + p)];
-  const results = await Promise.all(urls.map(url => fetchPage(url)));
   const sections: string[] = [];
-  results.forEach((result, i) => {
+
+  // 1. Homepage
+  const home = await fetchPage(c.baseUrl);
+  if (home) sections.push(`[PAGINA_URL: ${c.baseUrl}]\n${home.text}${home.dates}`);
+
+  // 2. Listing pages — extrair links de artigos
+  const listingPaths = ['/blog', '/noticias', '/novidades', '/lancamentos'];
+  const articleLinks: string[] = [];
+
+  const listingResults = await Promise.all(listingPaths.map(p => fetchPage(c.baseUrl + p)));
+  listingResults.forEach((result, i) => {
     if (result) {
-      const fullUrl = i === 0 ? c.baseUrl : c.baseUrl + c.extraPaths[i - 1];
-      sections.push(`[PAGINA_URL: ${fullUrl}]\n${result.text}${result.dates}`);
+      const url = c.baseUrl + listingPaths[i];
+      sections.push(`[PAGINA_URL: ${url}]\n${result.text}${result.dates}`);
+      articleLinks.push(...extractArticleLinks(result.html, c.baseUrl, url));
     }
   });
+
+  // 3. Raspar os 4 primeiros artigos encontrados
+  const uniqueArticles = [...new Set(articleLinks)].slice(0, 4);
+  if (uniqueArticles.length > 0) {
+    const articleResults = await Promise.all(uniqueArticles.map(url => fetchPage(url)));
+    articleResults.forEach((result, i) => {
+      if (result) sections.push(`[PAGINA_URL: ${uniqueArticles[i]}]\n${result.text}${result.dates}`);
+    });
+  }
+
+  // 4. Páginas de produtos (se ainda não cheio)
+  if (sections.length < 5) {
+    const productResults = await Promise.all(['/bicicletas', '/produtos'].map(p => fetchPage(c.baseUrl + p)));
+    productResults.forEach((result, i) => {
+      if (result) sections.push(`[PAGINA_URL: ${c.baseUrl + ['/bicicletas', '/produtos'][i]}]\n${result.text}${result.dates}`);
+    });
+  }
+
   if (sections.length === 0) return `=== ${c.name} ===\nSite inacess\u00edvel.`;
-  return `=== ${c.name} (${c.baseUrl}) ===\n${sections.slice(0, 3).join('\n\n')}`;
+  return `=== ${c.name} (${c.baseUrl}) ===\n${sections.slice(0, 7).join('\n\n')}`;
 }
 
 async function scrapeInstagram(): Promise<string> {
