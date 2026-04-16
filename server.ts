@@ -8,11 +8,19 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
+// Lazy init — evita crash na inicialização se env vars estiverem ausentes
+function getAI() {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('GEMINI_API_KEY não configurada');
+  return new GoogleGenAI({ apiKey: key });
+}
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_ANON_KEY não configuradas');
+  return createClient(url, key);
+}
 
 const COMPETITORS = [
   { name: 'Absolute', baseUrl: 'https://absolutebikes.com.br', extraPaths: [] },
@@ -186,7 +194,7 @@ async function scrapeInstagram(): Promise<string> {
   const apiKey = process.env.APIFY_API_KEY;
   if (!apiKey) return '';
 
-  const { data: handlesData } = await supabase.from('instagram_handles').select('handle');
+  const { data: handlesData } = await getSupabase().from('instagram_handles').select('handle');
   const handles = handlesData?.map((h: any) => h.handle) ?? INSTAGRAM_HANDLES;
   const urls = handles.map((h: string) => `https://www.instagram.com/${h}/`);
   console.log(`[Backend] Buscando ${handles.length} perfis no Instagram via Apify...`);
@@ -275,9 +283,21 @@ function parseNewsMarkdown(markdown: string): any[] {
 
 // --- Rotas API ---
 
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    env: {
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+      APIFY_API_KEY: !!process.env.APIFY_API_KEY,
+    }
+  });
+});
+
 app.get('/api/news', async (_req, res) => {
   try {
-    const { data, error } = await supabase.from('news_items').select('*').order('created_at', { ascending: false });
+    const { data, error } = await getSupabase().from('news_items').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     res.json({ items: data || [] });
   } catch (err: any) {
@@ -297,7 +317,7 @@ app.post('/api/news/refresh', async (_req, res) => {
     const today = new Date().toLocaleDateString('pt-BR');
 
     console.log('[Backend] Enviando para Gemini...');
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Analise o conteudo extraido dos websites e Instagram dos concorrentes da Elleven. Data de hoje (NAO use como data de publicacao): ${today}.\n\n${content}`,
       config: { systemInstruction: SYSTEM_INSTRUCTION, temperature: 0.1 },
@@ -306,15 +326,15 @@ app.post('/api/news/refresh', async (_req, res) => {
     const newItems = parseNewsMarkdown(response.text ?? '');
     console.log(`[Backend] ${newItems.length} itens encontrados.`);
 
-    const { data: existing } = await supabase.from('news_items').select('title');
+    const { data: existing } = await getSupabase().from('news_items').select('title');
     const existingTitles = new Set((existing || []).map((r: any) => r.title.toLowerCase().trim()));
     const toInsert = newItems.filter(item => !existingTitles.has(item.title.toLowerCase().trim()));
     console.log(`[Backend] ${toInsert.length} itens novos para salvar.`);
 
-    if (toInsert.length > 0) await supabase.from('news_items').insert(toInsert);
-    await supabase.from('scrape_log').insert({ items_found: newItems.length, items_new: toInsert.length });
+    if (toInsert.length > 0) await getSupabase().from('news_items').insert(toInsert);
+    await getSupabase().from('scrape_log').insert({ items_found: newItems.length, items_new: toInsert.length });
 
-    const { data: all } = await supabase.from('news_items').select('*').order('created_at', { ascending: false });
+    const { data: all } = await getSupabase().from('news_items').select('*').order('created_at', { ascending: false });
     res.json({ items: all || [], newCount: toInsert.length });
   } catch (err: any) {
     console.error('[Backend] Error:', err.message);
@@ -323,7 +343,7 @@ app.post('/api/news/refresh', async (_req, res) => {
 });
 
 app.get('/api/handles', async (_req, res) => {
-  const { data, error } = await supabase.from('instagram_handles').select('*').order('name');
+  const { data, error } = await getSupabase().from('instagram_handles').select('*').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
@@ -332,13 +352,13 @@ app.post('/api/handles', async (req, res) => {
   const { handle, name } = req.body;
   if (!handle || !name) return res.status(400).json({ error: 'handle e name são obrigatórios' });
   const clean = handle.replace(/^@/, '');
-  const { data, error } = await supabase.from('instagram_handles').insert({ handle: clean, name }).select().single();
+  const { data, error } = await getSupabase().from('instagram_handles').insert({ handle: clean, name }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
 app.delete('/api/handles/:id', async (req, res) => {
-  const { error } = await supabase.from('instagram_handles').delete().eq('id', req.params.id);
+  const { error } = await getSupabase().from('instagram_handles').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
