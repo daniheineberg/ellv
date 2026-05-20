@@ -4,6 +4,12 @@
   "functions": {
     "api/health.js": {
       "maxDuration": 10
+    },
+    "api/news/index.ts": {
+      "maxDuration": 30
+    },
+    "api/news/refresh.ts": {
+      "maxDuration": 300
     }
   },
   "rewrites": [
