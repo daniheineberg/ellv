@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "tsx server.ts",
     "dev": "concurrently \"vite --port=3000 --host=0.0.0.0\" \"tsx watch server.ts\"",
     "dev:client": "vite --port=3000 --host=0.0.0.0",
     "dev:server": "tsx watch server.ts",

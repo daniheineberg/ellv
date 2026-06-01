@@ -2,11 +2,25 @@ import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
 app.use(express.json());
+
+app.use((_req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (_req.method === 'OPTIONS') return res.status(200).end();
+  next();
+});
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const supabase = createClient(
@@ -100,29 +114,44 @@ async function scrapeInstagram(): Promise<string> {
     console.log('[Backend] APIFY_API_KEY não configurada, pulando Instagram.');
     return '';
   }
+
   const urls = INSTAGRAM_HANDLES.map(h => `https://www.instagram.com/${h}/`);
   console.log(`[Backend] Buscando ${INSTAGRAM_HANDLES.length} perfis no Instagram via Apify...`);
+
   try {
     const response = await fetch(
       `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${apiKey}&timeout=120`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directUrls: urls, resultsType: 'posts', resultsLimit: 5 }),
+        body: JSON.stringify({
+          directUrls: urls,
+          resultsType: 'posts',
+          resultsLimit: 5,
+        }),
         signal: AbortSignal.timeout(150000),
       }
     );
-    if (!response.ok) { console.error(`[Backend] Apify retornou ${response.status}`); return ''; }
+
+    if (!response.ok) {
+      console.error(`[Backend] Apify retornou ${response.status}`);
+      return '';
+    }
+
     const posts: any[] = await response.json();
     console.log(`[Backend] ${posts.length} posts do Instagram recebidos.`);
     if (!posts.length) return '';
+
     const sections = posts.map(post => {
       const handle = post.ownerUsername || '';
-      const date = post.timestamp ? new Date(post.timestamp).toLocaleDateString('pt-BR') : 'Não achei data';
+      const date = post.timestamp
+        ? new Date(post.timestamp).toLocaleDateString('pt-BR')
+        : 'Não achei data';
       const caption = (post.caption || '').substring(0, 600);
       const url = post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '');
       return `[PAGINA_URL: ${url}]\n[PERFIL: @${handle}]\n[DATA: ${date}]\nCAPTION: ${caption}`;
     });
+
     return `=== INSTAGRAM DOS CONCORRENTES ===\n${sections.join('\n\n')}`;
   } catch (err: any) {
     console.error('[Backend] Erro no Apify:', err.message);
@@ -138,6 +167,7 @@ function parseNewsMarkdown(markdown: string): any[] {
     if (!lines.length) continue;
     const title = lines[0].replace(/^\*+|\*+$/g, '').trim();
     let source = '', date = '', sourceType = 'website', url = '';
+
     const sourceLine = lines.find(l => l.startsWith('**Fonte:**'));
     if (sourceLine) {
       const raw = sourceLine.replace(/\*?Fonte:\*?\s*/i, '').replace(/\*/g, '');
@@ -147,6 +177,7 @@ function parseNewsMarkdown(markdown: string): any[] {
       else { source = parts[0] || ''; date = parts[1] || ''; }
       if (source.toLowerCase().includes('instagram') || source.includes('@')) sourceType = 'instagram';
     }
+
     const linkLine = lines.find(l => l.startsWith('**Link:**'));
     if (linkLine) {
       let parsedUrl = linkLine.replace(/\*?Link:\*?\s*/i, '').trim();
@@ -155,9 +186,11 @@ function parseNewsMarkdown(markdown: string): any[] {
       if (parsedUrl && !parsedUrl.startsWith('http') && parsedUrl.includes('.')) parsedUrl = 'https://' + parsedUrl;
       if (parsedUrl.startsWith('http')) url = parsedUrl;
     }
+
     if (!url) url = source.includes('@')
       ? `https://instagram.com/${(source.match(/@([\w.]+)/) || [])[1] || ''}`
       : `https://google.com/search?q=${encodeURIComponent(title + ' ' + source)}`;
+
     const tagsLine = lines.find(l => l.toLowerCase().includes('tags:'));
     const tags: any[] = [];
     if (tagsLine) {
@@ -169,22 +202,24 @@ function parseNewsMarkdown(markdown: string): any[] {
         if (label) tags.push({ label, type });
       });
     }
+
     const summaryStart = lines.findIndex(l => l.startsWith('**Concorrente:**')) + 1;
     let summaryEnd = lines.findIndex(l => l.toLowerCase().includes('tags:'));
     if (summaryEnd === -1) summaryEnd = lines.length;
     const summary = lines.slice(summaryStart, summaryEnd).join('\n');
-    items.push({ id: Math.random().toString(36).substring(7), title, source, source_type: sourceType, date, summary, tags, url, position: items.length });
+
+    items.push({ id: Math.random().toString(36).substring(7), title, source, source_type: sourceType, date, summary, tags, url });
   }
   return items;
 }
 
+// GET /api/news - retorna do banco (rapido, sem scraping)
 app.get('/api/news', async (_req, res) => {
   try {
     const { data, error } = await supabase
       .from('news_items')
       .select('*')
-      .order('created_at', { ascending: false })
-      .order('position', { ascending: true });
+      .order('created_at', { ascending: false });
     if (error) throw error;
     res.json({ items: data || [] });
   } catch (err: any) {
@@ -193,6 +228,7 @@ app.get('/api/news', async (_req, res) => {
   }
 });
 
+// POST /api/news/refresh - raspa sites + instagram e salva novidades no banco
 app.post('/api/news/refresh', async (_req, res) => {
   try {
     console.log('[Backend] Scraping websites e Instagram...');
@@ -200,26 +236,35 @@ app.post('/api/news/refresh', async (_req, res) => {
       Promise.all(COMPETITORS.map(scrapeCompetitor)),
       scrapeInstagram(),
     ]);
+
     const websiteContent = scraped.join('\n\n---\n\n');
-    const content = instagramContent ? `${websiteContent}\n\n---\n\n${instagramContent}` : websiteContent;
+    const content = instagramContent
+      ? `${websiteContent}\n\n---\n\n${instagramContent}`
+      : websiteContent;
+
     const today = new Date().toLocaleDateString('pt-BR');
+
     console.log('[Backend] Enviando para Gemini...');
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Analise o conteudo extraido dos websites e Instagram dos concorrentes da Elleven. Data de hoje (NAO use como data de publicacao): ${today}.\n\n${content}`,
       config: { systemInstruction: SYSTEM_INSTRUCTION, temperature: 0.1 },
     });
+
     const newItems = parseNewsMarkdown(response.text ?? '');
     console.log(`[Backend] ${newItems.length} itens encontrados.`);
+
     const { data: existing } = await supabase.from('news_items').select('title');
     const existingTitles = new Set((existing || []).map((r: any) => r.title.toLowerCase().trim()));
     const toInsert = newItems.filter(item => !existingTitles.has(item.title.toLowerCase().trim()));
     console.log(`[Backend] ${toInsert.length} itens novos para salvar.`);
-    if (toInsert.length > 0) await supabase.from('news_items').insert(toInsert);
+
+    if (toInsert.length > 0) {
+      await supabase.from('news_items').insert(toInsert);
+    }
     await supabase.from('scrape_log').insert({ items_found: newItems.length, items_new: toInsert.length });
-    const { data: all } = await supabase.from('news_items').select('*')
-      .order('created_at', { ascending: false })
-      .order('position', { ascending: true });
+
+    const { data: all } = await supabase.from('news_items').select('*').order('created_at', { ascending: false });
     res.json({ items: all || [], newCount: toInsert.length });
   } catch (err: any) {
     console.error('[Backend] Error:', err.message);
@@ -227,5 +272,11 @@ app.post('/api/news/refresh', async (_req, res) => {
   }
 });
 
-const PORT = 3001;
+const distPath = join(__dirname, 'dist');
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => res.sendFile(join(distPath, 'index.html')));
+}
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 app.listen(PORT, () => console.log(`✓ Backend rodando na porta ${PORT}`));
