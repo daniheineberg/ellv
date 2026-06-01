@@ -12,6 +12,7 @@ export interface NewsItem {
   id: string;
   date: string;
   createdAt: string;
+  position: number;
   source: string;
   sourceType: 'website' | 'instagram';
   title: string;
@@ -28,6 +29,7 @@ function mapDbItem(item: any): NewsItem {
     sourceType: item.source_type === 'instagram' ? 'instagram' : 'website',
     date: item.date,
     createdAt: item.created_at,
+    position: item.position ?? 0,
     summary: item.summary,
     tags: Array.isArray(item.tags) ? item.tags : [],
     url: item.url,
@@ -54,7 +56,7 @@ export default function App() {
       setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (err: any) {
       console.error('Failed to load news from DB', err);
-      setError('Erro ao carregar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
+      setError('Erro ao carregar notícias. Verifique se o servidor backend está rodando.');
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +75,7 @@ export default function App() {
       setLastUpdated(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (err: any) {
       console.error('Failed to refresh news', err);
-      setError('Erro ao buscar not\u00edcias. Verifique se o servidor backend est\u00e1 rodando.');
+      setError('Erro ao buscar notícias. Verifique se o servidor backend está rodando.');
     } finally {
       setIsRefreshing(false);
     }
@@ -85,7 +87,7 @@ export default function App() {
 
   const statusText = lastUpdated
     ? newCount !== null
-      ? `${newCount} nova${newCount !== 1 ? 's' : ''} \u2022 atualizado ${lastUpdated}`
+      ? `${newCount} nova${newCount !== 1 ? 's' : ''} • atualizado ${lastUpdated}`
       : `atualizado ${lastUpdated}`
     : null;
 
@@ -114,7 +116,6 @@ export default function App() {
           </button>
         </div>
       </header>
-
       <main>
         {error && (
           <div className="max-w-3xl mx-auto px-6 mt-6">
@@ -129,7 +130,6 @@ export default function App() {
           <NewsFeed news={news} isLoading={isLoading || isRefreshing} onDeepDive={setActiveNewsItem} />
         )}
       </main>
-
       <nav className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-[#1a1a1a] flex justify-around py-3 z-20">
         <button
           onClick={() => setActiveNewsItem(null)}

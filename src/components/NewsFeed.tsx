@@ -9,7 +9,7 @@ interface NewsFeedProps {
 }
 
 function parseDateBR(dateStr: string): number {
-  if (!dateStr || dateStr.toLowerCase().includes('n\u00e3o achei')) return 0;
+  if (!dateStr || dateStr.toLowerCase().includes('não achei')) return 0;
   const parts = dateStr.split('/');
   if (parts.length !== 3) return 0;
   const [d, m, y] = parts;
@@ -38,8 +38,10 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
         if (tb === 0) return -1;
         if (tb !== ta) return tb - ta;
       }
-      // tiebreaker: mais recentemente adicionado ao banco primeiro
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      const tca = new Date(a.createdAt).getTime();
+      const tcb = new Date(b.createdAt).getTime();
+      if (tcb !== tca) return tcb - tca;
+      return a.position - b.position;
     });
 
   return (
@@ -52,8 +54,8 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`bg-transparent border-none text-base font-medium py-3 relative transition-colors hover:text-gray-300 ${
-              activeTab === tab 
-                ? 'text-white after:content-[""] after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-[2px] after:bg-white' 
+              activeTab === tab
+                ? 'text-white after:content-[""] after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-[2px] after:bg-white'
                 : 'text-gray-500'
             }`}
           >
@@ -68,7 +70,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar not\u00edcias..."
+          placeholder="Buscar notícias..."
           className="w-full bg-[#111] border border-[#1a1a1a] rounded-xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#2a2a2a] transition-colors placeholder:text-[#404040]"
         />
       </div>
@@ -76,7 +78,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
       {activeTag && (
         <div className="mb-6 flex items-center gap-2">
           <span className="text-sm text-gray-400">Filtrando por tag:</span>
-          <button 
+          <button
             onClick={() => setActiveTag(null)}
             className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 hover:bg-indigo-500/30 transition-colors"
           >
@@ -89,25 +91,25 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-            <p>Analisando mercado e gerando intelig\u00eancia competitiva...</p>
+            <p>Analisando mercado e gerando inteligência competitiva...</p>
           </div>
         ) : filteredNews.length > 0 ? (
           filteredNews.map((item) => (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 cursor-pointer transition-all hover:border-[#2a2a2a] hover:-translate-y-0.5 relative group"
               onClick={() => onDeepDive(item)}
             >
               <div className="text-sm text-gray-500 mb-3 flex items-center gap-2">
-                {item.date} \u2022 {item.source}
+                {item.date} • {item.source}
               </div>
               <div className="text-xl font-semibold leading-snug mb-4 text-white pr-20">
                 {item.title}
               </div>
               <div className="flex flex-wrap gap-2">
                 {item.tags.map((tag, index) => (
-                  <span 
-                    key={index} 
+                  <span
+                    key={index}
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveTag(activeTag === tag.label ? null : tag.label);
@@ -122,11 +124,10 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
                   </span>
                 ))}
               </div>
-              
               <div className="absolute right-6 top-6 flex items-center gap-3">
-                <a 
-                  href={item.url} 
-                  target="_blank" 
+                <a
+                  href={item.url}
+                  target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   className="text-[#404040] hover:text-indigo-400 transition-colors p-2 -m-2"
@@ -142,7 +143,7 @@ export function NewsFeed({ news, isLoading, onDeepDive }: NewsFeedProps) {
           ))
         ) : (
           <div className="text-center text-gray-500 py-12">
-            Nenhuma not\u00edcia encontrada para os filtros atuais.
+            Nenhuma notícia encontrada para os filtros atuais.
           </div>
         )}
       </div>
